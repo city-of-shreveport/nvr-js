@@ -17,31 +17,29 @@ const queue = require('queue-fifo');
 const customParseFormat = require('dayjs/plugin/customParseFormat');
 dayjs.extend(customParseFormat);
 const RateLimiter = require('express-rate-limit');
-const debug = require('debug')('NVRJS')
-const debugFIFO = require('debug')('NVRJS-FIFO')
 
-debug(' - Checking config.');
+console.log(' - Checking config.');
 if (!fs.existsSync(path.join(os.homedir(), 'nvrjs.config.js'))) {
 	fs.copyFileSync(
 		path.join(__dirname, 'nvrjs.config.example.js'),
 		path.join(os.homedir(), 'nvrjs.config.js')
 	);
-	debug(
+	console.log(
 		' - New config created: ' + path.join(os.homedir(), 'nvrjs.config.js')
 	);
-	debug(' - Edit config to suite and restart!');
+	console.log(' - Edit config to suite and restart!');
 	process.exit(0);
 }
 const config = require(path.join(os.homedir(), 'nvrjs.config.js'));
-debug(' - Config loaded: ' + path.join(os.homedir(), 'nvrjs.config.js'));
+console.log(' - Config loaded: ' + path.join(os.homedir(), 'nvrjs.config.js'));
 
 let SQL;
 const SensorTimestamps = {};
 
-debug(' - Checking volumes and ffmpeg.');
+console.log(' - Checking volumes and ffmpeg.');
 
 if (!fs.existsSync(config.system.storageVolume)) {
-	debug(' - Storage volume does not exist');
+	console.log(' - Storage volume does not exist');
 	process.exit();
 } else {
 	try {
@@ -60,21 +58,21 @@ if (!fs.existsSync(config.system.storageVolume)) {
 			);
 		}
 	} catch (e) {
-		debug('Error creating system directories.');
-		debug(e.message);
+		console.log('Error creating system directories.');
+		console.log(e.message);
 		process.exit(0);
 	}
 }
 
 if (!fs.existsSync(config.system.ffmpegLocation)) {
-	debug(
+	console.log(
 		'ffmpeg not found in specifed location: ' + config.system.ffmpegLocation
 	);
 	process.exit(0);
 }
 
 CreateOrConnectSQL(() => {
-	debug(' - Starting purge interval.');
+	console.log(' - Starting purge interval.');
 	setInterval(
 		purgeContinuous,
 		1000 * 3600 * config.system.continuousPurgeIntervalHours
@@ -82,35 +80,24 @@ CreateOrConnectSQL(() => {
 	purgeContinuous();
 });
 
-debug(' - Starting data write queue.');
+console.log(' - Starting data write queue.');
 const FIFO = new queue();
 function Commit() {
 	if (!FIFO.isEmpty()) {
 		const Query = FIFO.dequeue();
-    debugFIFO("FIFO Dequeue:");
-    debugFIFO(Query);
 		const STMT = SQL.prepare(Query.statement, () => {
-      debugFIFO("STMT prepared. Running...");
-
 			STMT.run(Query.params, (err) => {
         if(err == null) {
           STMT.finalize();
-          debugFIFO("STMT finalized successfully.");
-          debugFIFO("Calling Commit() again to dequeue another.");
           Commit();
         } else {
-          debugFIFO("!!! Run failed: ");
-          debugFIFO(err);
-          debugFIFO("Requeuing Query")
           FIFO.enqueue(Query);
-          debugFIFO("Waiting 10s to retry...");
           setTimeout(Commit, 10000);
         }
 			});
 
 		});
 	} else {
-    debugFIFO("Nothing in queue. Setting timeout on Commit...");
 		setTimeout(Commit, 10000);
 	}
 }
@@ -121,14 +108,14 @@ const IOLimiter = RateLimiter({
 	max: 100
 });
 
-debug(' - Creating express application.');
+console.log(' - Creating express application.');
 const App = new express();
 App.use(IOLimiter);
 App.use(express.json());
 App.use(cookieparser(config.system.cookieKey));
 const HTTP = new http.Server(App);
 
-debug(' - Compiling pages.');
+console.log(' - Compiling pages.');
 const CompiledPages = {};
 const Pages = {
 	Dash: path.join(__dirname, 'web', 'dash.html'),
@@ -373,7 +360,7 @@ function CreateOrConnectSQL(CB) {
 	);
 
 	if (!fs.existsSync(Path)) {
-		debug(' - Creating db structure.');
+		console.log(' - Creating db structure.');
 		SQL = new sql.Database(Path, () => {
 			SQL.run(
 				'CREATE TABLE Segments(SegmentID TEXT, CameraID TEXT, FileName TEXT, Start NUMERIC, End NUMERIC)',
@@ -382,7 +369,7 @@ function CreateOrConnectSQL(CB) {
 						'CREATE TABLE Events(EventID TEXT,CameraID TEXT, Name TEXT, SensorID TEXT, Date NUMERIC)',
 						() => {
 							SQL.close();
-							debug(' - Connecting to db.');
+							console.log(' - Connecting to db.');
 							SQL = new sql.Database(Path, CB);
 						}
 					);
@@ -390,7 +377,7 @@ function CreateOrConnectSQL(CB) {
 			);
 		});
 	} else {
-		debug(' - Connecting to db.');
+		console.log(' - Connecting to db.');
 		SQL = new sql.Database(Path, CB);
 	}
 }
@@ -408,7 +395,7 @@ function FFMPEGExitDueToError(Code, Signal) {
 }
 
 function InitCamera(Cam, cameraID) {
-	debug(' - Configuring camera: ' + Cam.name);
+	console.log(' - Configuring camera: ' + Cam.name);
 
 	const CommandArgs = [];
 
@@ -503,7 +490,7 @@ function InitCamera(Cam, cameraID) {
 		});
 
 		Spawned.on('close', () => {
-			debug(
+			console.log(
 				' - Camera: ' +
 					Cam.name +
 					' was terminated, respawning after 10 seconds...'
@@ -597,7 +584,7 @@ function CheckAuthMW(req, res, next) {
 }
 
 async function purgeContinuous() {
-	debug(' - Purging data.');
+	console.log(' - Purging data.');
 	const Date = dayjs().subtract(config.system.continuousDays, 'day').unix();
 	const STMT = SQL.prepare('SELECT * FROM Segments WHERE Start <= ?');
 	STMT.all([Date], (err, rows) => {
@@ -623,4 +610,4 @@ async function purgeContinuous() {
 }
 
 HTTP.listen(config.system.interfacePort);
-debug(' - NVR JS is Ready!');
+console.log(' - NVR JS is Ready!');
