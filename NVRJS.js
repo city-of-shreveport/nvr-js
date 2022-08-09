@@ -17,29 +17,30 @@ const queue = require('queue-fifo');
 const customParseFormat = require('dayjs/plugin/customParseFormat');
 dayjs.extend(customParseFormat);
 const RateLimiter = require('express-rate-limit');
+const debug = require('debug')('NVRJS')
 
-console.log(' - Checking config.');
+debug(' - Checking config.');
 if (!fs.existsSync(path.join(os.homedir(), 'nvrjs.config.js'))) {
 	fs.copyFileSync(
 		path.join(__dirname, 'nvrjs.config.example.js'),
 		path.join(os.homedir(), 'nvrjs.config.js')
 	);
-	console.log(
+	debug(
 		' - New config created: ' + path.join(os.homedir(), 'nvrjs.config.js')
 	);
-	console.log(' - Edit config to suite and restart!');
+	debug(' - Edit config to suite and restart!');
 	process.exit(0);
 }
 const config = require(path.join(os.homedir(), 'nvrjs.config.js'));
-console.log(' - Config loaded: ' + path.join(os.homedir(), 'nvrjs.config.js'));
+debug(' - Config loaded: ' + path.join(os.homedir(), 'nvrjs.config.js'));
 
 let SQL;
 const SensorTimestamps = {};
 
-console.log(' - Checking volumes and ffmpeg.');
+debug(' - Checking volumes and ffmpeg.');
 
 if (!fs.existsSync(config.system.storageVolume)) {
-	console.log(' - Storage volume does not exist');
+	debug(' - Storage volume does not exist');
 	process.exit();
 } else {
 	try {
@@ -58,21 +59,21 @@ if (!fs.existsSync(config.system.storageVolume)) {
 			);
 		}
 	} catch (e) {
-		console.log('Error creating system directories.');
-		console.log(e.message);
+		debug('Error creating system directories.');
+		debug(e.message);
 		process.exit(0);
 	}
 }
 
 if (!fs.existsSync(config.system.ffmpegLocation)) {
-	console.log(
+	debug(
 		'ffmpeg not found in specifed location: ' + config.system.ffmpegLocation
 	);
 	process.exit(0);
 }
 
 CreateOrConnectSQL(() => {
-	console.log(' - Starting purge interval.');
+	debug(' - Starting purge interval.');
 	setInterval(
 		purgeContinuous,
 		1000 * 3600 * config.system.continuousPurgeIntervalHours
@@ -80,18 +81,24 @@ CreateOrConnectSQL(() => {
 	purgeContinuous();
 });
 
-console.log(' - Starting data write queue.');
+debug(' - Starting data write queue.');
 const FIFO = new queue();
 function Commit() {
 	if (!FIFO.isEmpty()) {
 		const Query = FIFO.dequeue();
+    debug("FIFO Dequeue: ***");
+    debug(Query);
 		const STMT = SQL.prepare(Query.statement, () => {
+      debug("STMT prepared. Running...");
+
 			STMT.run(Query.params, () => {
 				STMT.finalize();
+        debug("STMT finalized successfully. Calling Commit() again to dequeue another.");
 				Commit();
 			});
 		});
 	} else {
+    debug("Nothing in queue. Setting timeout on Commit...");
 		setTimeout(Commit, 10000);
 	}
 }
@@ -102,14 +109,14 @@ const IOLimiter = RateLimiter({
 	max: 100
 });
 
-console.log(' - Creating express application.');
+debug(' - Creating express application.');
 const App = new express();
 App.use(IOLimiter);
 App.use(express.json());
 App.use(cookieparser(config.system.cookieKey));
 const HTTP = new http.Server(App);
 
-console.log(' - Compiling pages.');
+debug(' - Compiling pages.');
 const CompiledPages = {};
 const Pages = {
 	Dash: path.join(__dirname, 'web', 'dash.html'),
@@ -354,7 +361,7 @@ function CreateOrConnectSQL(CB) {
 	);
 
 	if (!fs.existsSync(Path)) {
-		console.log(' - Creating db structure.');
+		debug(' - Creating db structure.');
 		SQL = new sql.Database(Path, () => {
 			SQL.run(
 				'CREATE TABLE Segments(SegmentID TEXT, CameraID TEXT, FileName TEXT, Start NUMERIC, End NUMERIC)',
@@ -363,7 +370,7 @@ function CreateOrConnectSQL(CB) {
 						'CREATE TABLE Events(EventID TEXT,CameraID TEXT, Name TEXT, SensorID TEXT, Date NUMERIC)',
 						() => {
 							SQL.close();
-							console.log(' - Connecting to db.');
+							debug(' - Connecting to db.');
 							SQL = new sql.Database(Path, CB);
 						}
 					);
@@ -371,7 +378,7 @@ function CreateOrConnectSQL(CB) {
 			);
 		});
 	} else {
-		console.log(' - Connecting to db.');
+		debug(' - Connecting to db.');
 		SQL = new sql.Database(Path, CB);
 	}
 }
@@ -389,7 +396,7 @@ function FFMPEGExitDueToError(Code, Signal) {
 }
 
 function InitCamera(Cam, cameraID) {
-	console.log(' - Configuring camera: ' + Cam.name);
+	debug(' - Configuring camera: ' + Cam.name);
 
 	const CommandArgs = [];
 
@@ -484,7 +491,7 @@ function InitCamera(Cam, cameraID) {
 		});
 
 		Spawned.on('close', () => {
-			console.log(
+			debug(
 				' - Camera: ' +
 					Cam.name +
 					' was terminated, respawning after 10 seconds...'
@@ -578,7 +585,7 @@ function CheckAuthMW(req, res, next) {
 }
 
 async function purgeContinuous() {
-	console.log(' - Purging data.');
+	debug(' - Purging data.');
 	const Date = dayjs().subtract(config.system.continuousDays, 'day').unix();
 	const STMT = SQL.prepare('SELECT * FROM Segments WHERE Start <= ?');
 	STMT.all([Date], (err, rows) => {
@@ -604,4 +611,4 @@ async function purgeContinuous() {
 }
 
 HTTP.listen(config.system.interfacePort);
-console.log(' - NVR JS is Ready!');
+debug(' - NVR JS is Ready!');
