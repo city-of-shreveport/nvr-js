@@ -96,15 +96,18 @@ function Commit() {
         if(err == null) {
           STMT.finalize();
           debugFIFO("STMT finalized successfully.");
+          debugFIFO("Calling Commit() again to dequeue another.");
+          Commit();
         } else {
           debugFIFO("!!! Run failed: ");
           debugFIFO(err);
           debugFIFO("Requeuing Query")
           FIFO.enqueue(Query);
+          debugFIFO("Waiting 10s to retry...");
+          setTimeout(Commit, 10000);
         }
-        debugFIFO("Calling Commit() again to dequeue another.");
-        Commit();
 			});
+
 		});
 	} else {
     debugFIFO("Nothing in queue. Setting timeout on Commit...");
