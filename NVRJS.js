@@ -91,10 +91,16 @@ function Commit() {
 		const STMT = SQL.prepare(Query.statement, () => {
       debug("STMT prepared. Running...");
 
-			STMT.run(Query.params, () => {
-				STMT.finalize();
-        debug("STMT finalized successfully. Calling Commit() again to dequeue another.");
-				Commit();
+			STMT.run(Query.params, (err) => {
+        if(err == null) {
+          STMT.finalize();
+          debug("STMT finalized successfully.");
+        } else {
+          debug("!!!Run failed: ");
+          debug(err);
+        }
+        debug("Calling Commit() again to dequeue another.");
+        Commit();
 			});
 		});
 	} else {
