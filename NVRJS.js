@@ -18,6 +18,7 @@ const customParseFormat = require('dayjs/plugin/customParseFormat');
 dayjs.extend(customParseFormat);
 const RateLimiter = require('express-rate-limit');
 const debug = require('debug')('NVRJS')
+const debugFIFO = require('debug')('NVRJS-FIFO')
 
 debug(' - Checking config.');
 if (!fs.existsSync(path.join(os.homedir(), 'nvrjs.config.js'))) {
@@ -86,25 +87,27 @@ const FIFO = new queue();
 function Commit() {
 	if (!FIFO.isEmpty()) {
 		const Query = FIFO.dequeue();
-    debug("FIFO Dequeue: ***");
-    debug(Query);
+    debugFIFO("FIFO Dequeue:");
+    debugFIFO(Query);
 		const STMT = SQL.prepare(Query.statement, () => {
-      debug("STMT prepared. Running...");
+      debugFIFO("STMT prepared. Running...");
 
 			STMT.run(Query.params, (err) => {
         if(err == null) {
           STMT.finalize();
-          debug("STMT finalized successfully.");
+          debugFIFO("STMT finalized successfully.");
         } else {
-          debug("!!!Run failed: ");
-          debug(err);
+          debugFIFO("!!! Run failed: ");
+          debugFIFO(err);
+          debugFIFO("Requeuing Query")
+          FIFO.enqueue(Query);
         }
-        debug("Calling Commit() again to dequeue another.");
+        debugFIFO("Calling Commit() again to dequeue another.");
         Commit();
 			});
 		});
 	} else {
-    debug("Nothing in queue. Setting timeout on Commit...");
+    debugFIFO("Nothing in queue. Setting timeout on Commit...");
 		setTimeout(Commit, 10000);
 	}
 }
