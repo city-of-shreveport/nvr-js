@@ -452,7 +452,7 @@ function InitCamera(Cam, cameraID) {
 		CommandArgs.push('pipe:4');
 		CommandArgs.push('-segment_time');
 		CommandArgs.push(60 * config.system.continuousSegTimeMinutes);
-		CommandArgs.push(path.join(Path, '%Y-%m-%dT%H-%M-%S.mp4'));
+		CommandArgs.push(path.join(Path, '%Y-%m-%dT%H-%M-%S.mkv'));
 	}
 
 	Object.keys(Cam.liveConfig.streamConfig).forEach((streamingConfigKey) => {
@@ -511,7 +511,7 @@ function InitCamera(Cam, cameraID) {
 			if (Processors[cameraID] !== undefined) {
 				const FileName = FN.toString().trim().replace(/\n/g, '');
 				const Start = dayjs(
-					FileName.replace(/.mp4/g, ''),
+					FileName.replace(/.mkv/g, ''),
 					'YYYY-MM-DDTHH-mm-ss'
 				).unix();
 				const End = dayjs().unix();
